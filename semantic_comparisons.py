@@ -8,6 +8,7 @@ from scipy.stats import spearmanr
 from scipy.stats import kendalltau
 import pandas as pd
 import copy
+import time
 
 
 
@@ -20,7 +21,7 @@ items = list(range(N_items))
 
 
 # parameters - stochastic model
-n_simulations = 2
+n_simulations = 50
 n_voters = 100
 sigma_min = 0.01
 sigma_max = 0.1
@@ -167,9 +168,16 @@ def voting(distribution_type):
 
 
     dic_coeff_tot = {}
+    runtimes_uniform = []
+    runtimes_adaptive = []
+
+    theoretical_ranks = sorted([[abs(underlying_scores[i]), i] for i  in range(N_items)], reverse=True)
+    theoretical_ranks = sorted([[theoretical_ranks[i][1], i] for i  in range(N_items)])
+    theoretical_ranks = [x[1] for x in theoretical_ranks]
+
 
     for votation in range(n_simulations):
-        print("\rvotation {}/{}                            ".format(votation + 1, n_simulations), end="")
+        print("\rUniform simulation {}/{}                  ".format(votation + 1, n_simulations), end="")
 
         #####
         # create voters
@@ -178,6 +186,7 @@ def voting(distribution_type):
         #####
         # case 1 - UNIFORM APPROACH - all votes together
 
+        t0 = time.time()
         MM1 = round(MM * (1 - alpha ** n_b) / (1 - alpha))
         pairs_of_items = create_pairs_of_items(items, MM1, voters_unique)
         pairs_of_items_voted = [[x, choose_winner(x, voter)] for (x, voter) in pairs_of_items]
@@ -200,12 +209,13 @@ def voting(distribution_type):
         for k in dic_votes.keys():
             dic_scores[k] = dic_wins.get(k, 0) / dic_votes[k]
 
-        rank_uniform = [x[0] for x in sorted(list(dic_scores.items()), key=lambda x: x[1], reverse=True)]
+        uniform_ranks = [x[0] for x in sorted(list(dic_scores.items()), key=lambda x: x[1], reverse=True)]
 
 
         #####
         # case 2 - ADAPTIVE APPROACH - n_b iterations
 
+        t1 = time.time()
         items_cicle = items
         list_scores_tot = []
 
@@ -214,7 +224,7 @@ def voting(distribution_type):
 
         for kk in range(0, n_b):
 
-            print("\rvotation {}/{}  -- it {}".format(votation + 1, n_simulations, kk + 1), end="")
+            print("\rAdaptive simulation {}/{}  (k = {})".format(votation + 1, n_simulations, kk + 1), end="")
             pairs_of_items = create_pairs_of_items(items_cicle, MM, voters_unique)
             pairs_of_items_voted = [[x, choose_winner(x, voter)] for (x, voter) in pairs_of_items]
 
@@ -251,13 +261,18 @@ def voting(distribution_type):
             items_selected = sorted([(k, v) for (k, v) in dic_x_kk.items()], key=lambda x:x[1], reverse=True)[:n_items_selected]
             items_cicle = [x[0] for x in items_selected]
 
+        print("\rFinal ranks calculation {}/{}       ".format(votation + 1, n_simulations), end="")
         final_ranks = [x[0] for x in sorted(list(dic_scores_final.items()), key=lambda x: x[1], reverse=True)]
-        theoretical_ranks = sorted(final_ranks)
+
+        t2 = time.time()
+        runtimes_uniform.append(t1 - t0)
+        runtimes_adaptive.append(t2 - t1)
+
 
         #####
         # coefficients
         bb = [ x + 1 for x in theoretical_ranks]
-        aa = [ x + 1 for x in rank_uniform]
+        aa = [ x + 1 for x in uniform_ranks]
         coeff = weighted_spearman(aa, bb)
         dic_coeff_tot["rho_w_uniform"] = dic_coeff_tot.get("rho_w_uniform", []) + [coeff]
         aa = [ x + 1 for x in final_ranks]
@@ -265,7 +280,7 @@ def voting(distribution_type):
         dic_coeff_tot["rho_w_adaptive"] = dic_coeff_tot.get("rho_w_adaptive", []) + [coeff]
 
         bb = [ x + 1 for x in theoretical_ranks]
-        aa = [ x + 1 for x in rank_uniform]
+        aa = [ x + 1 for x in uniform_ranks]
         coeff = weighted_kendall(aa, bb)
         dic_coeff_tot["tau_w_uniform"] = dic_coeff_tot.get("tau_w_uniform", []) + [coeff]
         aa = [ x + 1 for x in final_ranks]
@@ -273,17 +288,21 @@ def voting(distribution_type):
         dic_coeff_tot["tau_w_adaptive"] = dic_coeff_tot.get("tau_w_adaptive", []) + [coeff]
 
 
-        dic_coeff_tot["rho_uniform"] = dic_coeff_tot.get("rho_uniform", []) + [spearmanr(theoretical_ranks, rank_uniform)[0]]
+        dic_coeff_tot["rho_uniform"] = dic_coeff_tot.get("rho_uniform", []) + [spearmanr(theoretical_ranks, uniform_ranks)[0]]
         dic_coeff_tot["rho_adaptive"] = dic_coeff_tot.get("rho_adaptive", []) + [spearmanr(theoretical_ranks, final_ranks)[0]]
 
-        dic_coeff_tot["tau_uniform"] = dic_coeff_tot.get("tau_uniform", []) + [kendalltau(theoretical_ranks, rank_uniform)[0]]
+        dic_coeff_tot["tau_uniform"] = dic_coeff_tot.get("tau_uniform", []) + [kendalltau(theoretical_ranks, uniform_ranks)[0]]
         dic_coeff_tot["tau_adaptive"] = dic_coeff_tot.get("tau_adaptive", []) + [kendalltau(theoretical_ranks, final_ranks)[0]]
 
-    print("\nUnderlying similarity distribution: {}".format(distribution_type))
+    print("\n\nUnderlying similarity distribution: {}".format(distribution_type))
     for k in dic_coeff_tot.keys():
         mm = round(np.mean(dic_coeff_tot[k]), 4)
         sd = round(math.sqrt(np.var(dic_coeff_tot[k]) * n_simulations / (n_simulations - 1)), 4)
         print("\t{}: {} ± {}".format(k, mm, sd))
+
+    print("\nAverage runtime uniform: {}".format(np.mean(runtimes_uniform)))
+    print("Average runtime adaptive: {}".format(np.mean(runtimes_adaptive)))
+
 
     return None
 
