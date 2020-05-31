@@ -17,14 +17,13 @@ N_items = 990
 MM = 20
 alpha = 0.5
 n_b = 7
-items = list(range(N_items))
 
 
 # parameters - stochastic model
 n_simulations = 50
-n_voters = 100
-sigma_min = 0.01
-sigma_max = 0.1
+N_voters = 100
+sigma_min = 0.02
+sigma_max = 0.2
 epsilon_min = 0.005
 epsilon_max = 0.05
 
@@ -40,21 +39,25 @@ random.seed(0)
 
 ####
 # underlying similarity distributions
-underlying_sim_exp = [ 2 * math.exp(- i / N_items) - 1 for i in range(N_items) ]
-underlying_sim_powerlaw = [ 2 / (1 + i / N_items) - 1 for i in range(N_items)]
+underlying_sim_exp = [2 * math.exp(- i / N_items) - 1 for i in range(N_items)]
+underlying_sim_powerlaw = [2 / (1 + i / N_items) - 1 for i in range(N_items)]
 underlying_sim_samearea = list(pd.read_csv("underlying_sim_samearea.csv", sep=",")["similarity"])
+
+
+# items initialization
+items = list(range(N_items))
 
 
 #####
 # create random voters
 
 def create_voters(zz):
-    sigma_list = list(np.random.uniform(sigma_min, sigma_max, n_voters))
-    epsilon_list =  list(np.random.uniform(epsilon_min, epsilon_max, n_voters))
+    sigma_list = list(np.random.uniform(sigma_min, sigma_max, N_voters))
+    epsilon_list =  list(np.random.uniform(epsilon_min, epsilon_max, N_voters))
     n_scores = len(zz)
 
     voters = []
-    for voter in range(n_voters):
+    for voter in range(N_voters):
         eta = list(np.random.normal(0, 1, n_scores))
         oo = [abs(max(-1, min(1, zz[i] + sigma_list[voter] * zz[i] * (1- zz[i]) * eta[i])))  for i in range(n_scores)]
         voters.append((epsilon_list[voter], oo))
@@ -121,24 +124,29 @@ def create_pairs_of_items(items_now, MM_now, voters_unique):
     table_items = table_items.sort_values(by=["priority", "random"], ascending=False, ignore_index=True)
 
 
-    # number of pairs of items to be created (each of them contains 2 items --> divide by 2)
-    items_to_choose = round(nrows * MM_now / 2)
+    # number of pairs of items to be created (each pair contains 2 items --> divide by 2)
+    pairs_to_choose = round(nrows * MM_now / 2)
 
-    # create list of voters
-    nn = items_to_choose // n_voters
+    #####
+    # assigne each pair to a voter
+    nn = pairs_to_choose // N_voters
+
+    # each voter gets nn pairs
     voters = []
-    for i in range(n_voters):
+    for i in range(N_voters):
         voters = voters + [voters_unique[i]] * nn
-    nn2 = items_to_choose - (nn * n_voters)
+
+    # the possible extra pairs are assigned to randomly chosen voters
+    nn2 = pairs_to_choose - (nn * N_voters)
     if nn2 > 0:
-        pos = list(np.random.choice(range(n_voters), nn2))
+        pos = list(np.random.choice(range(N_voters), nn2))
         voters = voters + [voters_unique[i] for i in pos]
     np.random.shuffle(voters)
 
-    # create of pairs of items (from table_items) and associate a voter to each one
+    # create pairs of items (from table_items) and associate a voter to each one
     pairs_of_items = []
-    for count in range(0, (items_to_choose + 1)):
-        if items_to_choose < 1:
+    for count in range(0, (pairs_to_choose + 1)):
+        if pairs_to_choose < 1:
             break
         pairs_of_items.append([list(table_items["item"])[0:2], voters[count]])
         table_items["priority"][0] -= 1
@@ -147,7 +155,7 @@ def create_pairs_of_items(items_now, MM_now, voters_unique):
         table_items["random"][1] = int(round(np.random.uniform(0, 100000, 1)[0]))
 
         table_items = table_items.sort_values(by=["priority", "random"], ascending=False, ignore_index=True)
-        items_to_choose -= 1
+        pairs_to_choose -= 1
 
     return pairs_of_items
 
